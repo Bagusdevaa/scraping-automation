@@ -1,0 +1,48 @@
+# Web Scraping Core
+selenium
+beautifulsoup4
+requests
+
+# Data Processing
+pandas
+openpyxl
+
+# Progress Bar
+tqdm
+
+# Retry Logic & Error Handling
+tenacity
+
+# FastAPI Backend
+fastapi
+uvicorn[standard]
+
+# Google Sheets Integration
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+gspread
+
+# Configuration & Environment
+python-dotenv
+pydantic
+pydantic-settings
+
+# Logging & Monitoring
+structlog
+
+# Currency Conversion (untuk IDR to USD)
+forex-python
+
+# HTTP Client Enhancement
+httpx  # Async HTTP client for FastAPI
+
+# Date/Time Handling
+python-dateutil
+
+# Docker & Cloud Deployment
+gunicorn  # WSGI server production
+
+webdriver-manager
+undetected-chromedriver
