@@ -27,7 +27,7 @@ async def scrape_urls_only():
         logger.info("Starting URL scraping...")
         
         # Initialize scraper
-        with BaliExceptionScraper(headless=False, stealth_mode=True) as scraper:
+        with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
             urls = scraper.scrape_all_urls()
             
         return PropertyResponse(
@@ -44,7 +44,7 @@ async def scrape_urls_only():
 async def scrape_single_property(url: str):
     """Test scrape single property details"""
     try:
-        with BaliExceptionScraper(headless=False, stealth_mode=True) as scraper:
+        with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
             details = scraper.scrape_property_details(url)
         return details
     except Exception as e:
@@ -55,7 +55,7 @@ async def scrape_bulk_properties(urls: List[str], max_properties: int = 10):
     """Scrape details for multiple properties (with limit)"""
     try:
         results = []
-        with BaliExceptionScraper(headless=False, stealth_mode=True) as scraper:
+        with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
             for i, url in enumerate(urls[:max_properties]):
                 logger.info(f"Scraping property {i+1}/{min(len(urls), max_properties)}: {url}")
                 details = scraper.scrape_property_details(url)
@@ -75,7 +75,7 @@ async def scrape_bulk_properties(urls: List[str], max_properties: int = 10):
 async def scrape_full_workflow(max_properties: int = 50):
     """Complete workflow: scrape URLs then details"""
     try:
-        with BaliExceptionScraper(headless=False, stealth_mode=True) as scraper:
+        with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
             # Step 1: Get all URLs
             logger.info("Step 1: Collecting property URLs...")
             urls = scraper.scrape_all_urls()
@@ -104,7 +104,7 @@ async def scrape_and_save_to_sheets(max_properties: int = 50):
         # Initialize services
         sheets_service = GoogleSheetsService()
         
-        with BaliExceptionScraper(headless=False, stealth_mode=True) as scraper:
+        with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
             # Step 1: Get URLs
             logger.info("Step 1: Collecting property URLs...")
             urls = scraper.scrape_all_urls()
@@ -137,7 +137,7 @@ async def scrape_test_workflow(max_properties: int = 5, max_pages: int = 2):
     try:
         sheets_service = GoogleSheetsService()
         
-        with BaliExceptionScraper(headless=False, stealth_mode=True) as scraper:
+        with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
             # Modified: scrape only first few pages
             logger.info(f"Step 1: Collecting URLs from first {max_pages} pages...")
             urls = scraper.scrape_limited_urls(max_pages=max_pages)  # NEW METHOD

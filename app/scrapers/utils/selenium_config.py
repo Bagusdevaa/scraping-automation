@@ -26,7 +26,7 @@ class SeleniumConfig:
         options.add_experimental_option('useAutomationExtension', False)
         
         if headless:
-            options.add_argument('--headless=new')  # New headless mode
+            options.add_argument('--headless=new')
             
         return options
     

@@ -46,3 +46,4 @@ gunicorn  # WSGI server production
 
 webdriver-manager
 undetected-chromedriver
+setuptools
