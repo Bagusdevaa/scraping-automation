@@ -5,3 +5,4 @@ google-credentials.json
 *.log
 __pycache__/
 *.pyc
+dockerrun.md
