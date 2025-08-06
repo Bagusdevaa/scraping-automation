@@ -1,5 +1,4 @@
 import undetected_chromedriver as uc
-from selenium import webdriver
 from typing import Optional
 import os
 import logging
@@ -36,11 +35,15 @@ class SeleniumConfig:
         try:
             options = SeleniumConfig.get_chrome_options(headless)
             
-            # Create undetected Chrome driver
+            # Mendapatkan path dari environment variables
+            chrome_bin = os.getenv("CHROME_BIN", "/usr/local/bin/chrome")
+            chromedriver_bin = os.getenv("CHROMEDRIVER_BIN", "/usr/local/bin/chromedriver")
+            
+            # Create undetected Chrome driver dengan path yang spesifik
             driver = uc.Chrome(
+                browser_executable_path=chrome_bin,
+                driver_executable_path=chromedriver_bin,
                 options=options,
-                version_main=version_main,  # Let UC auto-detect if None
-                driver_executable_path=None,  # Let UC handle this
             )
             
             # Set timeouts
@@ -69,8 +72,16 @@ class SeleniumConfig:
             if headless:
                 options.add_argument('--headless=new')
             
+            # Mendapatkan path dari environment variables
+            chrome_bin = os.getenv("CHROME_BIN", "/usr/local/bin/chrome")
+            chromedriver_bin = os.getenv("CHROMEDRIVER_BIN", "/usr/local/bin/chromedriver")
+
             # Let undetected-chromedriver handle most anti-detection
-            driver = uc.Chrome(options=options)
+            driver = uc.Chrome(
+                browser_executable_path=chrome_bin,
+                driver_executable_path=chromedriver_bin,
+                options=options
+            )
             driver.set_page_load_timeout(60)
             
             logging.info("✅ Stealth WebDriver initialized successfully")
