@@ -98,7 +98,7 @@ async def scrape_full_workflow(max_properties: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.post("/scrape/full-workflow-with-sheets")
-async def scrape_and_save_to_sheets(max_properties: int = 50):
+async def scrape_and_save_to_sheets():
     """Complete workflow: scrape URLs, details, and save to Google Sheets"""
     try:
         # Initialize services
@@ -110,13 +110,13 @@ async def scrape_and_save_to_sheets(max_properties: int = 50):
             urls = scraper.scrape_all_urls()
             
             # Step 2: Scrape details
-            logger.info(f"Step 2: Scraping details for {min(len(urls), max_properties)} properties...")
+            logger.info(f"Step 2: Scraping details for {len(urls)} properties...")
             properties = []
-            for i, url in enumerate(urls[:max_properties]):
+            for i, url in enumerate(urls):
                 details = scraper.scrape_property_details(url)
                 properties.append(details)
-                logger.info(f"Completed {i+1}/{min(len(urls), max_properties)}")
-                time.sleep(2)
+                logger.info(f"Completed {i+1}/{len(urls)} properties")
+                time.sleep(3)
             
             # Step 3: Save to Google Sheets
             logger.info("Step 3: Saving to Google Sheets...")

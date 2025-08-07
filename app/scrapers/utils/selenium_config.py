@@ -1,5 +1,4 @@
 import undetected_chromedriver as uc
-from selenium import webdriver
 from typing import Optional
 import os
 import logging
@@ -16,9 +15,8 @@ class SeleniumConfig:
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         
-        # Updated user agent
-        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
-        options.add_argument(f'user-agent={user_agent}')
+        # Remove hardcoded user agent - let undetected-chromedriver handle it
+        # This prevents version mismatch issues
         
         # Additional stealth options (optional with undetected-chromedriver)
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -36,11 +34,22 @@ class SeleniumConfig:
         try:
             options = SeleniumConfig.get_chrome_options(headless)
             
-            # Create undetected Chrome driver
+            # Mendapatkan path dari environment variables dengan fallback
+            chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/google-chrome-stable")
+            chromedriver_bin = os.getenv("CHROMEDRIVER_BIN", "/usr/local/bin/chromedriver")
+            
+            # Check if Chrome binary exists
+            if not os.path.exists(chrome_bin):
+                chrome_bin = "/usr/bin/google-chrome"  # Another fallback
+                if not os.path.exists(chrome_bin):
+                    chrome_bin = None  # Let undetected-chromedriver find it
+            
+            # Create undetected Chrome driver dengan path yang spesifik
             driver = uc.Chrome(
+                browser_executable_path=chrome_bin,
+                driver_executable_path=chromedriver_bin,
                 options=options,
-                version_main=version_main,  # Let UC auto-detect if None
-                driver_executable_path=None,  # Let UC handle this
+                version_main=version_main
             )
             
             # Set timeouts
@@ -48,6 +57,8 @@ class SeleniumConfig:
             driver.implicitly_wait(10)
             
             logging.info("✅ Undetected WebDriver initialized successfully")
+            logging.info(f"Chrome binary: {chrome_bin}")
+            logging.info(f"ChromeDriver: {chromedriver_bin}")
             return driver
             
         except Exception as e:
@@ -69,11 +80,27 @@ class SeleniumConfig:
             if headless:
                 options.add_argument('--headless=new')
             
+            # Mendapatkan path dari environment variables dengan fallback
+            chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/google-chrome-stable")
+            chromedriver_bin = os.getenv("CHROMEDRIVER_BIN", "/usr/local/bin/chromedriver")
+
+            # Check if Chrome binary exists
+            if not os.path.exists(chrome_bin):
+                chrome_bin = "/usr/bin/google-chrome"  # Another fallback
+                if not os.path.exists(chrome_bin):
+                    chrome_bin = None  # Let undetected-chromedriver find it
+
             # Let undetected-chromedriver handle most anti-detection
-            driver = uc.Chrome(options=options)
+            driver = uc.Chrome(
+                browser_executable_path=chrome_bin,
+                driver_executable_path=chromedriver_bin,
+                options=options
+            )
             driver.set_page_load_timeout(60)
             
             logging.info("✅ Stealth WebDriver initialized successfully")
+            logging.info(f"Chrome binary: {chrome_bin}")
+            logging.info(f"ChromeDriver: {chromedriver_bin}")
             return driver
             
         except Exception as e:
