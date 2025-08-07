@@ -24,22 +24,48 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Mengunduh Chromium dan ChromeDriver versi spesifik untuk Linux ARM64
-RUN CHROME_VERSION="139.0.7258.66" \
-    && ARCH="linux64" \
-    && CHROME_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" \
-    && CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" \
-    && wget -q "${CHROME_URL}" -O /tmp/chrome.zip \
-    && wget -q "${CHROMEDRIVER_URL}" -O /tmp/chromedriver.zip \
-    && unzip /tmp/chrome.zip -d /usr/local/bin/ \
-    && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
-    && rm /tmp/chrome.zip /tmp/chromedriver.zip \
-    && mv /usr/local/bin/chrome-linux64/chrome /usr/local/bin/chrome \
-    && mv /usr/local/bin/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
-    && chmod +x /usr/local/bin/chrome /usr/local/bin/chromedriver \
-    && rm -rf /usr/local/bin/chrome-linux64 /usr/local/bin/chromedriver-linux64 \
-    && /usr/local/bin/chrome --version \
-    && /usr/local/bin/chromedriver --version
+# Install Chrome dan ChromeDriver dengan auto-compatibility detection
+RUN apt-get update && apt-get install -y \
+    gnupg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Google Chrome stable dengan cross-platform support
+RUN DEBIAN_ARCH=$(dpkg --print-architecture) \
+    && echo "Debian architecture: $DEBIAN_ARCH" \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
+    && echo "deb [arch=$DEBIAN_ARCH signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install matching ChromeDriver with cross-platform detection
+RUN CHROME_VERSION=$(google-chrome --version | grep -oP "\d+" | head -1) \
+    && echo "Chrome major version: $CHROME_VERSION" \
+    && CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$CHROME_VERSION") \
+    && echo "ChromeDriver version: $CHROMEDRIVER_VERSION" \
+    && ARCH=$(uname -m) \
+    && DEBIAN_ARCH=$(dpkg --print-architecture) \
+    && echo "System architecture: $ARCH" \
+    && echo "Debian architecture: $DEBIAN_ARCH" \
+    && if [ "$ARCH" = "aarch64" ] || [ "$DEBIAN_ARCH" = "arm64" ]; then \
+        CHROME_ARCH="linux-arm64"; \
+        CHROME_DIR="chromedriver-linux-arm64"; \
+    else \
+        CHROME_ARCH="linux64"; \
+        CHROME_DIR="chromedriver-linux64"; \
+    fi \
+    && echo "Using ChromeDriver architecture: $CHROME_ARCH" \
+    && wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/$CHROME_ARCH/$CHROME_DIR.zip" \
+    && unzip /tmp/chromedriver.zip -d /tmp/ \
+    && mv /tmp/$CHROME_DIR/chromedriver /usr/local/bin/ \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf /tmp/chromedriver* \
+    && echo "=== VERSION CHECK ===" \
+    && google-chrome --version \
+    && chromedriver --version \
+    && echo "Final architecture: $(uname -m)" \
+    && echo "Final Debian arch: $(dpkg --print-architecture)"
 
 # Buat direktori logs
 RUN mkdir -p /app/logs && chmod 777 /app/logs
@@ -57,7 +83,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set environment variables
-ENV CHROME_BIN=/usr/local/bin/chrome
+ENV CHROME_BIN=/usr/bin/google-chrome-stable
 ENV CHROMEDRIVER_BIN=/usr/local/bin/chromedriver
 ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
 ENV DISPLAY=:99
