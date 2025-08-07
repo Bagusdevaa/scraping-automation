@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 import time
 import re
 import logging
+import requests
 
 class BaliExceptionForRentExtractor(BaseExtractor):
     """Extractor for Bali Exception for-rent properties (villas subdomain)"""
@@ -152,29 +153,55 @@ class BaliExceptionForRentExtractor(BaseExtractor):
     def extract_property_details(self, driver, url: str) -> Dict[str, Any]:
         """Extract property details using Selenium driver (NOT requests)"""
         data = {
+            # Common fields for both for-sale and for-rent
             'url': url,
             'listing_type': 'for rent',
             'Company': 'Bali Exception',
-            'title': None,
-            'property_type': None,
-            'price_idr': None,
-            'price_usd': None,
-            'location': None,
+            'property_ID': '',
+            'title': '',
+            'description': '',
+            'price_usd': 0,
+            'price_idr': 0,
+            'location': '',
+            'type': '',
+            'listing_date': '',
+            'status': '',
+            'bedrooms': 0,
+            'bathrooms': 0,
+            'land_size_sqm': 0,
+            'building_size_sqm': 0,
+            'lease_duration': 0,
+            'lease_expiry_year': 0,
+            'year_built': 0,
+            'listing_status': '',
+            'amenities': [],
+            'pool': False,
+            'pool_type': '',
+            'pool_size': 0,
+            'furnish': '',
+            'key_information': [],
+            'key_features': [],
             'features': {},
-            'description': []
+            # Additional fields that might be in for-sale only (will be null for for-rent)
+            'property_type': None
         }
 
         try:
-            # Navigate to property page with Selenium
-            driver.get(url)
-            time.sleep(3)  # Wait for page load
+            # Navigate to property page with Selenium (but we'll use requests for actual scraping)
+            import requests
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
             
             # Parse with BeautifulSoup
-            soup = BeautifulSoup(driver.page_source, "html.parser")
+            soup = BeautifulSoup(res.text, "lxml")
             
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error: Could not retrieve page from {url}. Reason: {e}")
+            data['error'] = f"Failed to retrieve page: {e}"
+            return data
         except Exception as e:
-            self.logger.error(f"Error loading page {url}: {e}")
-            data['error'] = f"Failed to load page: {e}"
+            self.logger.error(f"An unexpected error occurred during page retrieval for {url}. Reason: {e}")
+            data['error'] = f"Unexpected error during page retrieval: {e}"
             return data
 
         # GET TITLE
@@ -182,38 +209,42 @@ class BaliExceptionForRentExtractor(BaseExtractor):
             title_tag = soup.find('h1', class_='brxe-post-title')
             if title_tag:
                 data['title'] = title_tag.get_text(strip=True)
-                if 'villa' in data['title'].lower():
-                    data['property_type'] = 'villa'
-                elif 'land' in data['title'].lower():
-                    data['property_type'] = 'land'
+                # Determine property type from title
+                title_lower = data['title'].lower()
+                if 'villa' in title_lower:
+                    data['type'] = 'villa'
+                elif 'land' in title_lower:
+                    data['type'] = 'land'
+                elif 'house' in title_lower:
+                    data['type'] = 'house'
                 else:
-                    data['property_type'] = None
+                    data['type'] = ''
             else:
                 self.logger.warning(f"Title element (h1.brxe-post-title) not found for {url}")
         except Exception as e:
-            self.logger.error(f"Error extracting title for {url}: {e}")
+            self.logger.error(f"Error extracting title for {url}. Reason: {e}")
 
         # GET PRICE
         try:
             price_span = soup.select_one('span.wpcs_price')
             if price_span:
                 raw_price_text = price_span.get_text(strip=True)
-                self.logger.debug(f"Raw price text: '{raw_price_text}' for {url}")
+                self.logger.debug(f"Raw price text found: '{raw_price_text}' for {url}")
 
                 cleaned_price_str = re.sub(r'[^0-9]', '', raw_price_text)
                 if cleaned_price_str:
                     price_idr_numeric = int(cleaned_price_str)
                     data['price_idr'] = price_idr_numeric
                     data['price_usd'] = round(price_idr_numeric / self.USD_RATE, 2)
-                    self.logger.debug(f"Price IDR: {data['price_idr']}, Price USD: {data['price_usd']}")
+                    self.logger.debug(f"Price IDR: {data['price_idr']}, Price USD: {data['price_usd']} for {url}")
                 else:
-                    self.logger.warning(f"Cleaned price is empty for {url}. Raw: '{raw_price_text}'")
+                    self.logger.warning(f"Cleaned price (numeric) is empty for {url}. Raw text: '{raw_price_text}'")
             else:
-                self.logger.warning(f"Price span.wpcs_price not found for {url}")
+                self.logger.warning(f"Price span.wpcs_price element not found for {url}")
         except (AttributeError, ValueError, TypeError) as e:
-            self.logger.error(f"Error processing price for {url}: {e}")
+            self.logger.error(f"Error processing price for {url}. Reason: {e}")
         except Exception as e:
-            self.logger.error(f"Unexpected error extracting price for {url}: {e}")
+            self.logger.error(f"An unexpected error occurred while extracting price for {url}. Reason: {e}")
 
         # GET LOCATION
         try:
@@ -221,9 +252,9 @@ class BaliExceptionForRentExtractor(BaseExtractor):
             if location_tag:
                 data['location'] = location_tag.get_text(strip=True)
             else:
-                self.logger.warning(f"Location element not found for {url}")
+                self.logger.warning(f"Location element (div.jet-listing-dynamic-field__content) not found for {url}")
         except Exception as e:
-            self.logger.error(f"Error extracting location for {url}: {e}")
+            self.logger.error(f"Error extracting location for {url}. Reason: {e}")
 
         # GET FEATURES
         try:
@@ -239,25 +270,118 @@ class BaliExceptionForRentExtractor(BaseExtractor):
                             key = key_element.get_text(strip=True)
                             data['features'][key] = value
                     else:
-                        self.logger.warning(f"Incomplete feature data in listing-data__wrapper for {url}")
+                        self.logger.warning(f"Incomplete feature data found in a listing-data__wrapper for {url}")
             else:
                 self.logger.warning(f"No feature elements (div.listing-data__wrapper) found for {url}")
         except Exception as e:
-            self.logger.error(f"Error extracting features for {url}: {e}")
+            self.logger.error(f"Error extracting features for {url}. Reason: {e}")
 
         # GET DESCRIPTION
         try:
             description_tags = soup.select('div.x-read-more_content')
+            description_text = ''
             if description_tags:
                 for p_tag in description_tags:
                     paragraph_text = p_tag.get_text(strip=True)
-                    if paragraph_text:  # Only append if there's actual text
-                        data['description'].append(paragraph_text)
-                if not data['description']:  # If list is empty after stripping
+                    if paragraph_text:
+                        description_text += paragraph_text + '\n'
+                data['description'] = description_text.strip()
+                if not data['description']:
                     self.logger.warning(f"Description elements found but were empty for {url}")
             else:
                 self.logger.warning(f"No description elements (div.x-read-more_content) found for {url}")
         except Exception as e:
-            self.logger.error(f"Error extracting description for {url}: {e}")
+            self.logger.error(f"Error extracting description for {url}. Reason: {e}")
 
+        # FILL MISSING FIELDS FROM FEATURES
+        data = self._fill_missing_fields(data)
+        
+        # DETECT POOL INFORMATION
+        data = self._detect_pool_info(data)
+        
+        # ESTIMATE LEASE EXPIRY YEAR
+        data = self._estimate_lease_expiry_year(data)
+
+        return data
+
+    def _extract_number(self, value):
+        """Get the number from a string like '42 m²' → 42 (int)"""
+        if not value:
+            return 0
+        match = re.search(r'\d+(\.\d+)?', str(value).replace(",", ""))
+        if match:
+            return float(match.group()) if '.' in match.group() else int(match.group())
+        return 0
+
+    def _fill_missing_fields(self, data):
+        """Fill missing fields from features data"""
+        feature_map = {
+            'Property ID': 'property_ID',
+            'Bedroom': 'bedrooms',
+            'Bathroom': 'bathrooms',
+            'Land Area': 'land_size_sqm',
+            'Property Size': 'building_size_sqm',
+            'Furnish': 'furnish',
+            'Leasehold': 'lease_duration',
+            'Year Built': 'year_built',
+            'Status': 'status',
+            'Type': 'type',
+            'Area': 'location',
+            'Label': 'listing_status',
+            'Pool Size': 'pool_size'
+        }
+
+        for f_key, main_key in feature_map.items():
+            if main_key in data and (data[main_key] == '' or data[main_key] == 0):
+                value = data['features'].get(f_key, '')
+                
+                if main_key in ['bedrooms', 'bathrooms', 'land_size_sqm', 'building_size_sqm', 'lease_duration', 'year_built', 'pool_size']:
+                    if main_key == 'lease_duration':
+                        if isinstance(value, str) and value.strip():
+                            value = self._extract_number(value.split()[0])
+                        else:
+                            value = 0
+                    else:
+                        value = self._extract_number(value)
+                
+                data[main_key] = value
+        
+        return data
+
+    def _detect_pool_info(self, data):
+        """Detect pool information from text content"""
+        pool_keywords = ['pool', 'swimming pool', 'plunge pool', 'lap pool', 'infinity pool', 'jacuzzi']
+        pool_types = ['private', 'shared', 'communal', 'infinity', 'plunge', 'lap', 'jacuzzi']
+        
+        text_sources = []
+        for key in ['description', 'key_information', 'key_features', 'amenities']:
+            value = data.get(key, '')
+            if isinstance(value, list):
+                text_sources.extend(value)
+            elif isinstance(value, str):
+                text_sources.append(value)
+
+        all_text = ' '.join(text_sources).lower()
+
+        # Pool existence
+        has_pool = any(kw in all_text for kw in pool_keywords)
+
+        # Pool type
+        pool_type = ''
+        for t in pool_types:
+            if t in all_text:
+                pool_type = t
+                break
+
+        data['pool'] = has_pool
+        data['pool_type'] = pool_type.title() if pool_type else ''
+        return data
+
+    def _estimate_lease_expiry_year(self, data):
+        """Estimate lease expiry year"""
+        try:
+            if data.get('lease_duration') and data.get('year_built'):
+                data['lease_expiry_year'] = int(data['year_built']) + int(data['lease_duration'])
+        except:
+            data['lease_expiry_year'] = 0
         return data

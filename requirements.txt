@@ -6,6 +6,7 @@ requests
 # Data Processing
 pandas
 openpyxl
+numpy
 
 # Progress Bar
 tqdm
@@ -16,6 +17,9 @@ tenacity
 # FastAPI Backend
 fastapi
 uvicorn[standard]
+
+# System Monitoring
+psutil
 
 # Google Sheets Integration
 google-auth

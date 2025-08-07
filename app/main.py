@@ -1,18 +1,22 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
-from app.api.routes import router
+from app.api.routes_new import router
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 import uvicorn
+import os
 
-# Setup logging
+# Fix Windows console encoding issues
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+# Setup logging with Unicode support
 setup_logging()
 
 # Create FastAPI app
 app = FastAPI(
-    title="Property Scraping API",
-    description="Automated property scraping service for Bali Exception",
-    version="1.0.0"
+    title="Multi-Competitor Property Scraping API",
+    description="Automated property scraping service for multiple competitors",
+    version="2.0.0"
 )
 
 # Include routers

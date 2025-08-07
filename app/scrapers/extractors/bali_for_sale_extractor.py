@@ -5,6 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any
+from ..utils.data_utils import safe_float_parse, safe_int_parse, safe_string_parse, extract_price_from_text, extract_numbers_from_text
 import time
 import re
 import logging
@@ -165,24 +166,27 @@ class BaliExceptionForSaleExtractor(BaseExtractor):
             if price_element:
                 # For converted-price, try data attributes first
                 if price_element.has_attr('data-usd-price') and price_element.has_attr('data-idr-price'):
-                    data['price_usd'] = float(price_element.get('data-usd-price', 0))
-                    data['price_idr'] = int(price_element.get('data-idr-price', 0))
+                    data['price_usd'] = safe_float_parse(price_element.get('data-usd-price'))
+                    data['price_idr'] = safe_int_parse(price_element.get('data-idr-price'))
                 else:
-                    # Fallback to text extraction
+                    # Fallback to text extraction using safe parsing
                     raw_price_text = price_element.get_text(strip=True)
                     self.logger.debug(f"Raw price text: '{raw_price_text}' for {url}")
 
-                    # Extract numeric value
-                    cleaned_price_str = re.sub(r'[^0-9]', '', raw_price_text)
-                    if cleaned_price_str:
-                        price_idr_numeric = int(cleaned_price_str)
-                        data['price_idr'] = price_idr_numeric
-                        data['price_usd'] = round(price_idr_numeric / self.USD_RATE, 2)
+                    # Use safe price extraction
+                    price_idr_numeric = extract_price_from_text(raw_price_text)
+                    if price_idr_numeric > 0:
+                        data['price_idr'] = safe_int_parse(price_idr_numeric)
+                        data['price_usd'] = safe_float_parse(price_idr_numeric / self.USD_RATE)
                         self.logger.debug(f"Price IDR: {data['price_idr']}, Price USD: {data['price_usd']}")
                     else:
-                        self.logger.warning(f"Cleaned price is empty for {url}. Raw: '{raw_price_text}'")
+                        self.logger.warning(f"Could not extract valid price for {url}. Raw: '{raw_price_text}'")
+                        data['price_idr'] = 0
+                        data['price_usd'] = 0.0
             else:
                 self.logger.warning(f"Price element not found for {url}")
+                data['price_idr'] = 0
+                data['price_usd'] = 0.0
         except Exception as e:
             self.logger.error(f"Error extracting price for {url}: {e}")
 
