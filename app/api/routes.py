@@ -1,51 +1,130 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from app.models.responses import PropertyResponse
 from app.scrapers.baliExceptionScraper import BaliExceptionScraper
+from app.scrapers.utils.selenium_config import SeleniumConfig
 from app.services.google_sheets_service import GoogleSheetsService
 import logging
 from pydantic import BaseModel
 import time
 from app.core.config import settings
-
-from typing import List
+from typing import List, Optional
 
 class PropertyDetailRequest(BaseModel):
     url: str
 
+class CategoryScrapeRequest(BaseModel):
+    categories: Optional[List[str]] = ["for-sale", "for-rent"]
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+@router.get("/debug/environment")
+async def debug_environment():
+    """Debug environment setup untuk troubleshooting ChromeDriver issues"""
+    try:
+        env_info = SeleniumConfig.debug_environment()
+        return {
+            "status": "success",
+            "environment": env_info,
+            "message": "Environment debug completed - check logs for details"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "Failed to debug environment"
+        }
+
+@router.get("/debug/webdriver")
+async def debug_webdriver():
+    """Test WebDriver initialization untuk debugging"""
+    try:
+        logger.info("🧪 Testing WebDriver initialization...")
+        
+        # Test stealth driver creation
+        with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
+            # Try to navigate to a simple page
+            scraper.driver.get("https://httpbin.org/user-agent")
+            time.sleep(2)
+            
+            page_title = scraper.driver.title
+            current_url = scraper.driver.current_url
+            user_agent = scraper.driver.execute_script("return navigator.userAgent;")
+            
+        return {
+            "status": "success",
+            "webdriver_test": {
+                "initialization": "✅ Success",
+                "page_title": page_title,
+                "current_url": current_url,
+                "user_agent": user_agent[:100] + "..." if len(user_agent) > 100 else user_agent
+            },
+            "message": "WebDriver test completed successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"WebDriver test failed: {e}")
+        return {
+            "status": "error",
+            "webdriver_test": {
+                "initialization": "❌ Failed",
+                "error": str(e)
+            },
+            "message": "WebDriver test failed - check environment debug"
+        }
 
 @router.get("/test")
 async def test_endpoint():
     """Test endpoint to verify API is working"""
     return {"message": "API is working!", "timestamp": "now"}
 
-@router.post("/scrape/urls", response_model=PropertyResponse)
-async def scrape_urls_only():
-    """Scrape URLs only (tanpa property details dulu)"""
+@router.post("/scrape/urls")
+async def scrape_urls_only(
+    categories: List[str] = Query(default=["for-sale", "for-rent"], description="Categories to scrape: for-sale, for-rent")
+):
+    """Scrape URLs only (tanpa property details dulu) dengan multiple categories"""
     try:
-        logger.info("Starting URL scraping...")
+        logger.info(f"Starting URL scraping for categories: {categories}")
+        
+        # Validate categories
+        valid_categories = ["for-sale", "for-rent"]
+        invalid_categories = [cat for cat in categories if cat not in valid_categories]
+        if invalid_categories:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid categories: {invalid_categories}. Valid options: {valid_categories}"
+            )
         
         # Initialize scraper
         with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
-            urls = scraper.scrape_all_urls()
+            urls_by_category = scraper.scrape_all_urls(categories)
             
-        return PropertyResponse(
-            urls=urls,
-            total_count=len(urls),
-            message=f"Successfully scraped {len(urls)} URLs"
-        )
+        # Calculate total count
+        total_count = sum(len(urls) for urls in urls_by_category.values())
+        
+        return {
+            "urls": urls_by_category,
+            "total_count": total_count,
+            "categories": list(urls_by_category.keys()),
+            "category_counts": {category: len(urls) for category, urls in urls_by_category.items()},
+            "message": f"Successfully scraped {total_count} URLs across {len(categories)} categories"
+        }
         
     except Exception as e:
         logger.error(f"Scraping failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.post("/scrape/property-details")
-async def scrape_single_property(url: str):
-    """Test scrape single property details"""
+async def scrape_single_property(url: str, category: str = "for-sale"):
+    """Test scrape single property details dengan category support"""
     try:
+        if category not in ["for-sale", "for-rent"]:
+            raise HTTPException(status_code=400, detail="Category must be 'for-sale' or 'for-rent'")
+            
         with BaliExceptionScraper(headless=True, stealth_mode=True) as scraper:
-            details = scraper.scrape_property_details(url)
+            # Use category-specific extractor
+            extractor = scraper.extractors[category]
+            details = extractor.extract_property_details(scraper.driver, url)
         return details
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

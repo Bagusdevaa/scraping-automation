@@ -23,7 +23,7 @@ class BaliExceptionForRentExtractor(BaseExtractor):
         return "/find-rental/"  # Note trailing slash
     
     def _scroll_to_bottom(self, driver, max_scrolls=100, scroll_pause_time=2):
-        """Scroll to bottom of page - from your Jupyter notebook"""
+        """Scroll to bottom of page - from your code"""
         last_height = driver.execute_script("return document.body.scrollHeight")
         scroll_count = 0
         while scroll_count < max_scrolls:
@@ -41,7 +41,7 @@ class BaliExceptionForRentExtractor(BaseExtractor):
         self.logger.info(f"Finished scrolling after {scroll_count} attempts.")
 
     def extract_all_urls(self, driver) -> List[str]:
-        """Complete URL extraction workflow from your Jupyter notebook"""
+        """Complete URL extraction workflow from your code"""
         try:
             driver.get(f"{self.get_base_url()}{self.get_endpoint()}")
             self.logger.info("Page loaded successfully.")
