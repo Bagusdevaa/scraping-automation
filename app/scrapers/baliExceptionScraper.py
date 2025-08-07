@@ -101,108 +101,178 @@ class BaliExceptionScraper(BaseScraper):
             return False
     
     def scrape_property_details(self, url: str) -> Dict[str, Any]:
-        """Scrape details from a single property URL"""
-        self.driver.get(url)
-        time.sleep(3)  # Wait for page load
+        """Scrape details from a single property URL with robust error handling"""
+        self.logger.info(f"Scraping property: {url}")
         
-        soup = BeautifulSoup(self.driver.page_source, "html.parser")
+        try:
+            self.driver.get(url)
+            time.sleep(3)  # Wait for page load
+            
+            soup = BeautifulSoup(self.driver.page_source, "html.parser")
 
+            result = {
+                "property_ID": '', 
+                "title": '', 
+                "description": '', 
+                "price_usd": 0, 
+                "price_idr": 0, 
+                "location": '',
+                "type": '',
+                "listing_date": '', 
+                "status": '',
+                "bedrooms": 0,
+                "bathrooms": 0,
+                "land_size_sqm": 0,
+                "building_size_sqm": 0,
+                "lease_duration": 0,
+                "lease_expiry_year": 0,
+                "year_built": 0,
+                "url": url, 
+                "listing_status": '',
+                "amenities": [], 
+                "pool_type": '',
+                "furnish": '',
+                "pool_size": 0,
+                "key_information": [], 
+                "key_features": [], 
+                "features": {},
+                "scraping_errors": []  # Track any extraction errors
+            }
 
-        result = {
-            "property_ID": '', 
-            "title": '', 
-            "description": '', 
-            "price_usd": 0, 
-            "price_idr": 0, 
-            "location": '',
-            "type": '',
-            "listing_date": '', 
-            "status": '',
-            "bedrooms": 0,
-            "bathrooms": 0,
-            "land_size_sqm": 0,
-            "building_size_sqm": 0,
-            "lease_duration": 0,
-            "lease_expiry_year": 0,
-            "year_built": 0,
-            "url": '', 
-            "listing_status": '',
-            "amenities": [], 
-            "pool_type": '',
-            "furnish": '',
-            "pool_size": 0,
-            "key_information": [], 
-            "key_features": [], 
-            "features": {} 
-        }
+            # get the title of the property
+            try:
+                title_elem = soup.find('h1', class_='brxe-post-title')
+                result['title'] = title_elem.text.strip() if title_elem else ""
+                if not result['title']:
+                    result['scraping_errors'].append("Title element not found")
+                    self.logger.warning(f"⚠️ Title not found for {url}")
+            except Exception as e:
+                result['scraping_errors'].append(f"Title extraction error: {e}")
+                self.logger.error(f"❌ Title extraction failed for {url}: {e}")
 
-        # get the title of the property
-        result['title'] = soup.find('h1', class_='brxe-post-title').text.strip()
+            # get the price of the property
+            try:
+                price_content = soup.select_one('p.converted-price')
+                if price_content:
+                    result['price_usd'] = price_content.get('data-usd-price', 0)
+                    result['price_idr'] = price_content.get('data-idr-price', 0)
+                else:
+                    result['price_usd'] = 0
+                    result['price_idr'] = 0
+                    result['scraping_errors'].append("Price element not found")
+                    self.logger.warning(f"⚠️ Price not found for {url}")
+            except Exception as e:
+                result['scraping_errors'].append(f"Price extraction error: {e}")
+                self.logger.error(f"❌ Price extraction failed for {url}: {e}")
 
-        # get the price of the property
-        price_content = soup.select_one('p.converted-price')
-        if price_content:
-            result['price_usd'] = price_content.get('data-usd-price')
-            result['price_idr'] = price_content.get('data-idr-price')
-        else:
-            result['price_usd'] = 0
-            result['price_idr'] = 0
+            # get the listing date of the property
+            try:
+                date_meta = soup.find('meta', {'property': 'article:published_time'})
+                if date_meta:
+                    listing_date = date_meta['content']
+                    result['listing_date'] = listing_date
+                else:
+                    result['scraping_errors'].append("Listing date not found")
+            except Exception as e:
+                result['scraping_errors'].append(f"Date extraction error: {e}")
+                self.logger.error(f"❌ Date extraction failed for {url}: {e}")
 
-        # get the listing date of the property
-        date_meta = soup.find('meta', {'property': 'article:published_time'})
-        if date_meta:
-            listing_date = date_meta['content']
-            result['listing_date'] = listing_date
+            # get the description, amenities, key information, and key features of the property
+            try:
+                post_content = soup.select_one('div.brxe-post-content')
+                if post_content:
+                    paragraphs = post_content.find_all('p')
+                    section = 'description'
+                    for p in paragraphs:
+                        try:
+                            text = p.get_text(strip=True) if p else ""
+                            if 'WE LOVE' in text:
+                                section = 'amenities'
+                                continue
+                            elif 'KEY INFORMATION' in text:
+                                section = 'key_information'
+                                continue
+                            elif 'Key Features Include' in text:
+                                section = 'key_features'
+                                continue
 
-        # get the url of the property
-        result['url'] = url
+                            if not text:
+                                continue
 
-        # get the description, amenities, key information, and key features of the property
-        post_content = soup.select_one('div.brxe-post-content')
-        if post_content:
-            paragraphs = post_content.find_all('p')
-            section = 'description'
-            for p in paragraphs:
-                text = p.get_text(strip=True)
-                # checking_text = text.lower() if text == str else text
-                if 'WE LOVE' in text:
-                    section = 'amenities'
-                    continue
-                elif 'KEY INFORMATION' in text:
-                    section = 'key_information'
-                    continue
-                elif 'Key Features Include' in text:
-                    section = 'key_features'
-                    continue
+                            if section == 'description':
+                                result['description'] += text + '\n'
+                            elif section == 'amenities':
+                                result['amenities'].append(text)
+                            elif section == 'key_information':
+                                result['key_information'].append(text)
+                            elif section == 'key_features':
+                                result['key_features'].append(text)
+                        except Exception as inner_e:
+                            self.logger.warning(f"⚠️ Paragraph processing error: {inner_e}")
+                            continue
+                else:
+                    result['scraping_errors'].append("Post content not found")
+            except Exception as e:
+                result['scraping_errors'].append(f"Content extraction error: {e}")
+                self.logger.error(f"❌ Content extraction failed for {url}: {e}")
 
-                if not text:
-                    continue
+            # get the features of the property
+            try:
+                features = soup.select('ul.featureList__wrapper li')
+                for feature in features:
+                    try:
+                        label_el = feature.select_one('div.brxe-text-basic.featureList')
+                        value_el = feature.select_one('div.jet-listing-dynamic-field__content')
+                        value_el2 = feature.select_one('a.jet-listing-dynamic-terms__link')
+                        
+                        if label_el and value_el:
+                            label_text = label_el.get_text(strip=True) if label_el else ""
+                            value_text = value_el.get_text(strip=True) if value_el else ""
+                            if label_text and value_text:
+                                result['features'][label_text] = value_text
+                        elif label_el and value_el2:
+                            label_text = label_el.get_text(strip=True) if label_el else ""
+                            value_text = value_el2.get_text(strip=True) if value_el2 else ""
+                            if label_text and value_text:
+                                result['features'][label_text] = value_text
+                    except Exception as feature_e:
+                        self.logger.warning(f"⚠️ Feature processing error: {feature_e}")
+                        continue
+            except Exception as e:
+                result['scraping_errors'].append(f"Features extraction error: {e}")
+                self.logger.error(f"❌ Features extraction failed for {url}: {e}")
+            
+            # Apply processing methods with error handling
+            try:
+                result = self._fill_missing_fields(result)
+                result = self._detect_pool_info(result)
+                result = self._estimate_lease_expiry_year(result)
+            except Exception as e:
+                result['scraping_errors'].append(f"Post-processing error: {e}")
+                self.logger.error(f"❌ Post-processing failed for {url}: {e}")
 
-                if section == 'description':
-                    result['description'] += text + '\n'
-                elif section == 'amenities':
-                    result['amenities'].append(text)
-                elif section == 'key_information':
-                    result['key_information'].append(text)
-                elif section == 'key_features':
-                    result['key_features'].append(text)
+            # Log success/warnings
+            if result['scraping_errors']:
+                self.logger.warning(f"⚠️ Property scraped with {len(result['scraping_errors'])} errors: {url}")
+            else:
+                self.logger.info(f"✅ Property scraped successfully: {result.get('title', 'No title')}")
 
-        # get the features of the property
-        features = soup.select('ul.featureList__wrapper li')
-        for feature in features:
-            label_el = feature.select_one('div.brxe-text-basic.featureList')
-            value_el = feature.select_one('div.jet-listing-dynamic-field__content')
-            value_el2 = feature.select_one('a.jet-listing-dynamic-terms__link')
-            if label_el and value_el:
-                result['features'][label_el.get_text(strip=True)] = value_el.get_text(strip=True)
-            elif label_el and value_el2:
-                result['features'][label_el.get_text(strip=True)] = value_el2.get_text(strip=True)
-        
-        result = self._fill_missing_fields(result)
-        result = self._detect_pool_info(result)
-        result = self._estimate_lease_expiry_year(result)
-
-        return result
+            return result
+            
+        except Exception as e:
+            # Catastrophic failure - return error result
+            self.logger.error(f"Complete scraping failure for {url}: {e}")
+            return {
+                "url": url,
+                "scraping_errors": [f"Complete failure: {e}"],
+                "title": "",
+                "description": "",
+                "price_usd": 0,
+                "price_idr": 0,
+                "location": "",
+                "features": {},
+                "error": True
+            }
     
     def _extract_number(self, value):
         """Get the number from a string like '42 m²' → 42 (int)"""
@@ -212,76 +282,110 @@ class BaliExceptionScraper(BaseScraper):
         return 0
     
     def _fill_missing_fields(self, data):
-        """Fill missing fields from features data"""
-        feature_map = {
-            'Property ID': 'property_ID',
-            'Bedroom': 'bedrooms',
-            'Bathroom': 'bathrooms',
-            'Land Area': 'land_size_sqm',
-            'Property Size': 'building_size_sqm',
-            'Furnish': 'furnish',
-            'Leasehold': 'lease_duration',
-            'Year Built': 'year_built',
-            'Status': 'status',
-            'Type': 'type',
-            'Area': 'location',
-            'Label': 'listing_status',
-            'Pool Size': 'pool_size'
-        }
+        """Fill missing fields from features data with error handling"""
+        try:
+            feature_map = {
+                'Property ID': 'property_ID',
+                'Bedroom': 'bedrooms',
+                'Bathroom': 'bathrooms',
+                'Land Area': 'land_size_sqm',
+                'Property Size': 'building_size_sqm',
+                'Furnish': 'furnish',
+                'Leasehold': 'lease_duration',
+                'Year Built': 'year_built',
+                'Status': 'status',
+                'Type': 'type',
+                'Area': 'location',
+                'Label': 'listing_status',
+                'Pool Size': 'pool_size'
+            }
 
-        for f_key, main_key in feature_map.items():
-            if main_key in data and (data[main_key] == '' or data[main_key] == 0):
-                value = data['features'].get(f_key, '')
-                
-                if main_key in ['bedrooms', 'bathrooms', 'land_size_sqm', 'building_size_sqm', 'lease_duration', 'year_built']:
-                    if main_key == 'lease_duration':
-                        if isinstance(value, str) and value.strip():
-                            value = self._extract_number(value.split()[0])
-                        else:
-                            value = 0
-                    else:
-                        value = self._extract_number(value)
-                
-                data[main_key] = value
-        
-        return data
+            for f_key, main_key in feature_map.items():
+                try:
+                    if main_key in data and (data[main_key] == '' or data[main_key] == 0):
+                        value = data.get('features', {}).get(f_key, '')
+                        
+                        if main_key in ['bedrooms', 'bathrooms', 'land_size_sqm', 'building_size_sqm', 'lease_duration', 'year_built']:
+                            if main_key == 'lease_duration':
+                                if isinstance(value, str) and value.strip():
+                                    try:
+                                        value = self._extract_number(value.split()[0])
+                                    except:
+                                        value = 0
+                                else:
+                                    value = 0
+                            else:
+                                try:
+                                    value = self._extract_number(value)
+                                except:
+                                    value = 0
+                        
+                        data[main_key] = value
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error processing field {f_key}: {e}")
+                    continue
+            
+            return data
+        except Exception as e:
+            self.logger.error(f"❌ _fill_missing_fields failed: {e}")
+            return data
     
     def _detect_pool_info(self, data):
-        """Detect pool information from text content"""
+        """Detect pool information from text content with error handling"""
+        try:
+            pool_keywords = ['pool', 'swimming pool', 'plunge pool', 'lap pool', 'infinity pool', 'jacuzzi']
+            pool_types = ['private', 'shared', 'communal', 'infinity', 'plunge', 'lap', 'jacuzzi']
+            
+            text_sources = []
+            for key in ['description', 'key_information', 'key_features', 'amenities']:
+                try:
+                    value = data.get(key, '')
+                    if isinstance(value, list):
+                        text_sources.extend(value)
+                    elif isinstance(value, str):
+                        text_sources.append(value)
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error processing text source {key}: {e}")
+                    continue
 
-        pool_keywords = ['pool', 'swimming pool', 'plunge pool', 'lap pool', 'infinity pool', 'jacuzzi']
-        pool_types = ['private', 'shared', 'communal', 'infinity', 'plunge', 'lap', 'jacuzzi']
-        
-        text_sources = []
-        for key in ['description', 'key_information', 'key_features', 'amenities']:
-            value = data.get(key)
-            if isinstance(value, list):
-                text_sources += value
-            elif isinstance(value, str):
-                text_sources.append(value)
+            all_text = ' '.join(text_sources).lower()
 
-        all_text = ' '.join(text_sources).lower()
+            # Pool existence
+            has_pool = any(kw in all_text for kw in pool_keywords)
 
-        # Pool existence
-        has_pool = any(kw in all_text for kw in pool_keywords)
+            # Pool type
+            pool_type = ''
+            for t in pool_types:
+                if t in all_text:
+                    pool_type = t
+                    break
 
-        # Pool type
-        pool_type = ''
-        for t in pool_types:
-            if t in all_text:
-                pool_type = t
-                break
+            data['pool'] = has_pool
+            data['pool_type'] = pool_type.title() if pool_type else ''
 
-        data['pool'] = has_pool
-        data['pool_type'] = pool_type.title() if pool_type else ''
-
-        return data
+            return data
+        except Exception as e:
+            self.logger.error(f"❌ _detect_pool_info failed: {e}")
+            # Return data with default pool values
+            data['pool'] = False
+            data['pool_type'] = ''
+            return data
     
     def _estimate_lease_expiry_year(self, data):
+        """Estimate lease expiry year with error handling"""
         try:
             if data.get('lease_duration') and data.get('year_built'):
-                data['lease_expiry_year'] = int(data['year_built']) + int(data['lease_duration'])
-        except:
+                lease_duration = int(data['lease_duration']) if isinstance(data['lease_duration'], (int, str)) else 0
+                year_built = int(data['year_built']) if isinstance(data['year_built'], (int, str)) else 0
+                
+                if lease_duration > 0 and year_built > 0:
+                    data['lease_expiry_year'] = year_built + lease_duration
+                else:
+                    data['lease_expiry_year'] = 0
+            else:
+                data['lease_expiry_year'] = 0
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error calculating lease expiry: {e}")
             data['lease_expiry_year'] = 0
 
         return data
