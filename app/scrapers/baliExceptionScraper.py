@@ -296,11 +296,20 @@ class BaliExceptionScraper(BaseScraper):
                         # Use extractor to get property details
                         property_data = extractor.extract_property_details(self.driver, url)
                         
-                        if property_data and property_data.get('title'):
+                        # More lenient check - consider data valid if we have URL and no critical error
+                        has_valid_data = (
+                            property_data and 
+                            property_data.get('url') and 
+                            not property_data.get('error')  # No critical error
+                        )
+                        
+                        if has_valid_data:
                             # Success - data extracted
+                            self.logger.info(f"Valid data extracted on attempt {retry+1}")
                             break
                         else:
-                            self.logger.warning(f"No/incomplete data on attempt {retry+1}")
+                            error_msg = property_data.get('error', 'No data extracted') if property_data else 'No data returned'
+                            self.logger.warning(f"No/incomplete data on attempt {retry+1}: {error_msg}")
                             
                     except Exception as e:
                         self.logger.warning(f"Attempt {retry+1} failed: {e}")
@@ -311,13 +320,17 @@ class BaliExceptionScraper(BaseScraper):
                         self.logger.info(f"Waiting {wait_time}s before retry...")
                         time.sleep(wait_time)
                 
-                if property_data and property_data.get('title'):
+                # Add property to results if we have basic data (more lenient)
+                if property_data and property_data.get('url') and not property_data.get('error'):
                     results.append(property_data)
                     self._update_stats('property_extracted')
-                    self.logger.info(f"[SUCCESS] Successfully scraped {category} property: {property_data.get('title', 'No title')}")
+                    title = property_data.get('title', 'No title')
+                    self.logger.info(f"[SUCCESS] Successfully scraped {category} property: {title}")
                 else:
+                    error_msg = property_data.get('error', 'No data after retries') if property_data else 'No data returned'
                     self._add_error('extraction_failed', url=url, category=category,
-                                  error_message='No data extracted after retries')
+                                  error_message=error_msg)
+                    self.logger.error(f"[FAILED] Could not scrape {category} property: {url} - {error_msg}")
                 
                 # Rate limiting between properties
                 time.sleep(3)  # Longer pause between properties

@@ -192,8 +192,12 @@ class BaliExceptionForRentExtractor(BaseExtractor):
             res = requests.get(url, timeout=10)
             res.raise_for_status()
             
-            # Parse with BeautifulSoup
-            soup = BeautifulSoup(res.text, "lxml")
+            # Parse with BeautifulSoup - fallback to html.parser if lxml not available
+            try:
+                soup = BeautifulSoup(res.text, "lxml")
+            except:
+                self.logger.warning("lxml not available, falling back to html.parser")
+                soup = BeautifulSoup(res.text, "html.parser")
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error: Could not retrieve page from {url}. Reason: {e}")

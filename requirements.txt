@@ -1,6 +1,7 @@
 # Web Scraping Core
 selenium
 beautifulsoup4
+lxml
 requests
 
 # Data Processing
